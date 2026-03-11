@@ -1,0 +1,45 @@
+name: Molecule
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: molecule-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Molecule
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@6ee6290f1cbc4156c0bdd66691b2c144ef8df19a # v7.4.0
+        with:
+          enable-cache: true
+
+      - name: Install test dependencies
+        run: uv sync --group molecule --locked
+
+      - name: Install Ansible collections
+        run: uv run ansible-galaxy collection install -r collections/requirements.yml
+
+      - name: Run Molecule
+        env:
+          ANSIBLE_FORCE_COLOR: "1"
+          PY_COLORS: "1"
+        run: uv run molecule test

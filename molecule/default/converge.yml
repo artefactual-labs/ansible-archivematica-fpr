@@ -1,0 +1,18 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: true
+  vars:
+    archivematica_fpr_manage_mcpclient_packages: false
+    archivematica_fpr_enabled_package_sets:
+      - libreoffice_pdf
+    archivematica_fpr_dashboard_environment_file: /tmp/archivematica-dashboard.env
+    archivematica_fpr_dashboard_python_path: /usr/local/bin/fake-dashboard-python
+    archivematica_fpr_dashboard_tmp_dir: /tmp
+    archivematica_fpr_libreoffice_pdf_source_format_pronom_ids:
+      - fmt/40
+  tasks:
+    - name: Include the role under test
+      ansible.builtin.include_role:
+        name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+

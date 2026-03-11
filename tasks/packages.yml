@@ -1,0 +1,39 @@
+---
+- name: Initialize resolved MCPClient package-set list
+  ansible.builtin.set_fact:
+    archivematica_fpr_resolved_package_set_packages: []
+
+- name: Resolve packages from enabled MCPClient package sets
+  ansible.builtin.set_fact:
+    archivematica_fpr_resolved_package_set_packages: >-
+      {{
+        archivematica_fpr_resolved_package_set_packages
+        + __archivematica_fpr_current_package_set_packages
+      }}
+  vars:
+    __archivematica_fpr_current_package_set: >-
+      {{ archivematica_fpr_mcpclient_package_set_map[item][ansible_facts['os_family']] }}
+    __archivematica_fpr_current_package_set_packages: >-
+      {{
+        __archivematica_fpr_current_package_set[ansible_facts['distribution_major_version']]
+        | default(__archivematica_fpr_current_package_set.default)
+      }}
+  loop: "{{ archivematica_fpr_enabled_package_sets }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Build final MCPClient package list
+  ansible.builtin.set_fact:
+    archivematica_fpr_resolved_mcpclient_packages: >-
+      {{
+        (
+          archivematica_fpr_resolved_package_set_packages
+          + archivematica_fpr_extra_mcpclient_packages
+        ) | unique
+      }}
+
+- name: Install MCPClient-side packages
+  ansible.builtin.package:
+    name: "{{ archivematica_fpr_resolved_mcpclient_packages }}"
+    state: present
+  when: archivematica_fpr_resolved_mcpclient_packages | length > 0

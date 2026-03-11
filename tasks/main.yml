@@ -1,0 +1,11 @@
+---
+- name: Validate supported platform and variable state
+  ansible.builtin.include_tasks: validate.yml
+
+- name: Install MCPClient-side package prerequisites
+  ansible.builtin.include_tasks: packages.yml
+  when: archivematica_fpr_manage_mcpclient_packages | bool
+
+- name: Configure LibreOffice PDF normalization
+  ansible.builtin.include_tasks: libreoffice_pdf.yml
+  when: archivematica_fpr_libreoffice_pdf_source_format_pronom_ids | length > 0

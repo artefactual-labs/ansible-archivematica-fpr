@@ -1,0 +1,37 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Check fake dashboard runner was invoked
+      ansible.builtin.stat:
+        path: /tmp/archivematica-fpr-script-path
+      register: archivematica_fpr_script_path_stat
+
+    - name: Assert fake dashboard runner invocation was recorded
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_script_path_stat.stat.exists
+
+    - name: Read fake dashboard runner invocation
+      ansible.builtin.slurp:
+        path: /tmp/archivematica-fpr-script-path
+      register: archivematica_fpr_script_path
+
+    - name: Assert the rendered LibreOffice script was passed to the runner
+      ansible.builtin.assert:
+        that:
+          - "'libreoffice_pdf.py' in (archivematica_fpr_script_path.content | b64decode)"
+
+    - name: Check for leaked temporary dashboard script directories
+      ansible.builtin.find:
+        paths: /tmp
+        patterns: "archivematica-fpr-*"
+        file_type: directory
+      register: archivematica_fpr_tempdirs
+
+    - name: Assert temporary dashboard script directories were removed
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_tempdirs.matched == 0
+

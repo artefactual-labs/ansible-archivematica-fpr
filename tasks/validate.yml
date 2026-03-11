@@ -1,0 +1,46 @@
+---
+- name: Assert supported OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts["os_family"] in ["Debian", "RedHat"]
+    fail_msg: >-
+      archivematica_fpr currently supports Debian and RedHat OS families.
+
+- name: Assert enabled package sets are defined
+  ansible.builtin.assert:
+    that:
+      - archivematica_fpr_mcpclient_package_set_map[item] is defined
+    fail_msg: >-
+      archivematica_fpr enabled package set '{{ item }}' is not defined in
+      archivematica_fpr_mcpclient_package_set_map.
+  loop: "{{ archivematica_fpr_enabled_package_sets }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Assert enabled package sets support this platform
+  ansible.builtin.assert:
+    that:
+      - archivematica_fpr_mcpclient_package_set_map[item][ansible_facts["os_family"]] is defined
+      - >
+        (
+          archivematica_fpr_mcpclient_package_set_map[item][ansible_facts["os_family"]][ansible_facts["distribution_major_version"]]
+          | default(
+              archivematica_fpr_mcpclient_package_set_map[item][ansible_facts["os_family"]].default,
+              true
+            )
+        ) | length > 0
+    fail_msg: >-
+      archivematica_fpr package set '{{ item }}' has no package mapping for
+      this platform.
+  loop: "{{ archivematica_fpr_enabled_package_sets }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Assert LibreOffice PDF rule set is paired with the package set
+  ansible.builtin.assert:
+    that:
+      - "'libreoffice_pdf' in archivematica_fpr_enabled_package_sets"
+    fail_msg: >-
+      archivematica_fpr_libreoffice_pdf_source_format_pronom_ids requires the
+      libreoffice_pdf package set to be enabled.
+  when: archivematica_fpr_libreoffice_pdf_source_format_pronom_ids | length > 0

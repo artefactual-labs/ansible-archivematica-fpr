@@ -1,0 +1,35 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ensure fake dashboard runner directory exists
+      ansible.builtin.file:
+        path: /usr/local/bin
+        state: directory
+        mode: "0755"
+
+    - name: Create fake dashboard environment file
+      ansible.builtin.copy:
+        dest: /tmp/archivematica-dashboard.env
+        mode: "0644"
+        content: |
+          DJANGO_SETTINGS_MODULE=archivematica.settings.production
+
+    - name: Install fake dashboard runner
+      ansible.builtin.copy:
+        dest: /usr/local/bin/fake-dashboard-python
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          set -eu
+
+          script_path="${1:-}"
+          if [ -z "$script_path" ] || [ ! -f "$script_path" ]; then
+            echo "Missing rendered script: $script_path" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$script_path" > /tmp/archivematica-fpr-script-path
+          printf '{"changed": false, "actions": []}\n'
+

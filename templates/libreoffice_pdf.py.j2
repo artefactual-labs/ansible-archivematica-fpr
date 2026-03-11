@@ -1,0 +1,271 @@
+#!/usr/bin/env python3
+import json
+
+import django
+from django.apps import apps
+
+
+CONFIG = {{ archivematica_fpr_libreoffice_pdf_config | to_json }}
+
+
+def error(message):
+    raise RuntimeError(message)
+
+
+def get_single_format_version(pronom_id):
+    matches = list(
+        FormatVersion.active.filter(pronom_id=pronom_id).select_related("format")
+    )
+    if len(matches) != 1:
+        error(
+            "Expected exactly one active FormatVersion for PUID {!r}, found {}".format(
+                pronom_id, len(matches)
+            )
+        )
+    return matches[0]
+
+
+def get_single_active_command(description, usage):
+    matches = list(
+        FPCommand.active.filter(
+            description=description,
+            command_usage=usage,
+        )
+    )
+    if len(matches) > 1:
+        error(
+            "Expected at most one active FPCommand for {!r} ({!r}), found {}".format(
+                description, usage, len(matches)
+            )
+        )
+    return matches[0] if matches else None
+
+
+def get_single_active_rule(purpose, format_version):
+    matches = list(
+        FPRule.active.filter(
+            purpose=purpose,
+            format=format_version,
+        ).select_related("command")
+    )
+    if len(matches) > 1:
+        error(
+            "Expected at most one active FPRule for purpose {!r} and PUID {!r}, found {}".format(
+                purpose, format_version.pronom_id, len(matches)
+            )
+        )
+    return matches[0] if matches else None
+
+
+def resolve_verification_command():
+    uuid = CONFIG["normalization_command"]["verification_command_uuid"]
+    description = CONFIG["normalization_command"]["verification_command_description"]
+
+    if uuid:
+        matches = list(
+            FPCommand.active.filter(
+                uuid=uuid,
+                command_usage="verification",
+            )
+        )
+    else:
+        matches = list(
+            FPCommand.active.filter(
+                description=description,
+                command_usage="verification",
+            )
+        )
+
+    if len(matches) != 1:
+        error(
+            "Expected exactly one active verification command for uuid={!r} description={!r}, found {}".format(
+                uuid, description, len(matches)
+            )
+        )
+    return matches[0]
+
+
+def ensure_tool(changes):
+    tool, created = FPTool.objects.get_or_create(
+        description=CONFIG["tool"]["description"],
+        version=CONFIG["tool"]["version"],
+        defaults={"enabled": True},
+    )
+    if created:
+        changes.append("created tool {}".format(tool.description))
+        return tool
+
+    if not tool.enabled:
+        tool.enabled = True
+        tool.save(update_fields=["enabled"])
+        changes.append("enabled tool {}".format(tool.description))
+
+    return tool
+
+
+def command_state(tool, description, command, script_type, usage, output_location, output_format, verification_command, event_detail_command):
+    return {
+        "tool_uuid": str(tool.uuid) if tool else None,
+        "description": description,
+        "command": command,
+        "script_type": script_type,
+        "command_usage": usage,
+        "output_location": output_location or "",
+        "output_format_uuid": str(output_format.uuid) if output_format else None,
+        "verification_command_uuid": str(verification_command.uuid) if verification_command else None,
+        "event_detail_command_uuid": str(event_detail_command.uuid) if event_detail_command else None,
+    }
+
+
+def existing_command_state(command):
+    return command_state(
+        tool=command.tool,
+        description=command.description,
+        command=command.command,
+        script_type=command.script_type,
+        usage=command.command_usage,
+        output_location=command.output_location,
+        output_format=command.output_format,
+        verification_command=command.verification_command,
+        event_detail_command=command.event_detail_command,
+    )
+
+
+def ensure_command(changes, description, command, script_type, usage, tool, output_location=None, output_format=None, verification_command=None, event_detail_command=None):
+    desired_state = command_state(
+        tool=tool,
+        description=description,
+        command=command,
+        script_type=script_type,
+        usage=usage,
+        output_location=output_location,
+        output_format=output_format,
+        verification_command=verification_command,
+        event_detail_command=event_detail_command,
+    )
+
+    existing = get_single_active_command(description, usage)
+    if existing is None:
+        created = FPCommand(
+            tool=tool,
+            description=description,
+            command=command,
+            script_type=script_type,
+            output_location=output_location,
+            output_format=output_format,
+            command_usage=usage,
+            verification_command=verification_command,
+            event_detail_command=event_detail_command,
+        )
+        created.save()
+        changes.append("created command {}".format(description))
+        return created
+
+    if existing_command_state(existing) == desired_state:
+        return existing
+
+    replacement = FPCommand(
+        tool=tool,
+        description=description,
+        command=command,
+        script_type=script_type,
+        output_location=output_location,
+        output_format=output_format,
+        command_usage=usage,
+        verification_command=verification_command,
+        event_detail_command=event_detail_command,
+    )
+    replacement.save(replacing=existing)
+    changes.append("updated command {}".format(description))
+    return replacement
+
+
+def ensure_rule(changes, purpose, format_version, command):
+    existing = get_single_active_rule(purpose, format_version)
+    if existing is None:
+        created = FPRule(
+            purpose=purpose,
+            command=command,
+            format=format_version,
+        )
+        created.save()
+        changes.append(
+            "created rule {} -> {} for {}".format(
+                purpose, command.description, format_version.pronom_id
+            )
+        )
+        return created
+
+    if str(existing.command.uuid) == str(command.uuid):
+        return existing
+
+    replacement = FPRule(
+        purpose=purpose,
+        command=command,
+        format=format_version,
+    )
+    replacement.save(replacing=existing)
+    changes.append(
+        "updated rule {} -> {} for {}".format(
+            purpose, command.description, format_version.pronom_id
+        )
+    )
+    return replacement
+
+
+def main():
+    changes = []
+    tool = ensure_tool(changes)
+    verification_command = resolve_verification_command()
+    output_format = get_single_format_version(
+        CONFIG["normalization_command"]["output_format_pronom_id"]
+    )
+
+    event_detail_command = ensure_command(
+        changes=changes,
+        description=CONFIG["event_detail_command"]["description"],
+        command=CONFIG["event_detail_command"]["command"],
+        script_type=CONFIG["event_detail_command"]["script_type"],
+        usage="event_detail",
+        tool=tool,
+    )
+
+    normalization_command = ensure_command(
+        changes=changes,
+        description=CONFIG["normalization_command"]["description"],
+        command=CONFIG["normalization_command"]["command"],
+        script_type=CONFIG["normalization_command"]["script_type"],
+        usage="normalization",
+        tool=tool,
+        output_location=CONFIG["normalization_command"]["output_location"],
+        output_format=output_format,
+        verification_command=verification_command,
+        event_detail_command=event_detail_command,
+    )
+
+    for pronom_id in CONFIG["rule"]["source_format_pronom_ids"]:
+        ensure_rule(
+            changes=changes,
+            purpose=CONFIG["rule"]["purpose"],
+            format_version=get_single_format_version(pronom_id),
+            command=normalization_command,
+        )
+
+    print(
+        json.dumps(
+            {
+                "changed": bool(changes),
+                "actions": changes,
+            }
+        )
+    )
+
+
+if __name__ == "__main__":
+    django.setup()
+    FPTool = apps.get_model("fpr", "FPTool")
+    FPCommand = apps.get_model("fpr", "FPCommand")
+    FPRule = apps.get_model("fpr", "FPRule")
+    FormatVersion = apps.get_model("fpr", "FormatVersion")
+
+    main()

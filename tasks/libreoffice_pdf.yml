@@ -1,0 +1,76 @@
+---
+- name: Check dashboard environment file
+  ansible.builtin.stat:
+    path: "{{ archivematica_fpr_dashboard_environment_file }}"
+  register: archivematica_fpr_dashboard_environment_file_stat
+
+- name: Assert dashboard environment file exists
+  ansible.builtin.assert:
+    that:
+      - archivematica_fpr_dashboard_environment_file_stat.stat.exists
+    fail_msg: >-
+      archivematica_fpr dashboard environment file was not found at
+      {{ archivematica_fpr_dashboard_environment_file }}.
+
+- name: Run LibreOffice PDF dashboard ORM script
+  block:
+    - name: Create temporary dashboard script directory
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ archivematica_fpr_dashboard_tmp_dir }}"
+        prefix: archivematica-fpr-
+      register: archivematica_fpr_libreoffice_pdf_tempdir
+      changed_when: false
+
+    - name: Render LibreOffice PDF dashboard script
+      ansible.builtin.template:
+        src: libreoffice_pdf.py.j2
+        dest: "{{ archivematica_fpr_libreoffice_pdf_tempdir.path }}/libreoffice_pdf.py"
+        mode: "0700"
+      vars:
+        archivematica_fpr_libreoffice_pdf_config:
+          tool:
+            description: "{{ archivematica_fpr_libreoffice_pdf_tool_description }}"
+            version: "{{ archivematica_fpr_libreoffice_pdf_tool_version }}"
+          event_detail_command:
+            description: "{{ archivematica_fpr_libreoffice_pdf_event_detail_description }}"
+            script_type: "{{ archivematica_fpr_libreoffice_pdf_event_detail_script_type }}"
+            command: "{{ archivematica_fpr_libreoffice_pdf_event_detail_command }}"
+          normalization_command:
+            description: "{{ archivematica_fpr_libreoffice_pdf_command_description }}"
+            script_type: "{{ archivematica_fpr_libreoffice_pdf_command_script_type }}"
+            command: "{{ archivematica_fpr_libreoffice_pdf_command }}"
+            output_location: "{{ archivematica_fpr_libreoffice_pdf_output_location }}"
+            output_format_pronom_id: "{{ archivematica_fpr_libreoffice_pdf_output_format_pronom_id }}"
+            verification_command_uuid: "{{ archivematica_fpr_libreoffice_pdf_verification_command_uuid }}"
+            verification_command_description: "{{ archivematica_fpr_libreoffice_pdf_verification_command_description }}"
+          rule:
+            purpose: "{{ archivematica_fpr_libreoffice_pdf_rule_purpose }}"
+            source_format_pronom_ids: "{{ archivematica_fpr_libreoffice_pdf_source_format_pronom_ids }}"
+      changed_when: false
+
+    - name: Execute LibreOffice PDF dashboard script
+      ansible.builtin.shell: |
+        set -euo pipefail
+        set -a
+        source "{{ archivematica_fpr_dashboard_environment_file }}"
+        set +a
+        "{{ archivematica_fpr_dashboard_python_path }}" "{{ archivematica_fpr_libreoffice_pdf_tempdir.path }}/libreoffice_pdf.py"
+      args:
+        executable: /bin/bash
+      register: archivematica_fpr_libreoffice_pdf_result
+      changed_when: >-
+        (
+          archivematica_fpr_libreoffice_pdf_result.stdout
+          | default('{}')
+          | from_json
+        ).changed
+  always:
+    - name: Remove temporary dashboard script directory
+      ansible.builtin.file:
+        path: "{{ archivematica_fpr_libreoffice_pdf_tempdir.path }}"
+        state: absent
+      changed_when: false
+      when:
+        - archivematica_fpr_libreoffice_pdf_tempdir is defined
+        - archivematica_fpr_libreoffice_pdf_tempdir.path is defined

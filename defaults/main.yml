@@ -1,0 +1,69 @@
+---
+# Manage package prerequisites needed by MCPClient-side tools referenced by FPR
+# commands.
+archivematica_fpr_manage_mcpclient_packages: true
+
+# Named package sets let an FPR customization carry the MCPClient-side package
+# dependencies required by its command implementation. For example, a
+# LibreOffice PDF normalization command can tie libreoffice and the distro-
+# specific provider of /usr/bin/flock together in one package set.
+archivematica_fpr_enabled_package_sets: []
+
+archivematica_fpr_mcpclient_package_set_map:
+  libreoffice_pdf:
+    Debian:
+      default:
+        - libreoffice
+        - util-linux
+    RedHat:
+      "8":
+        - libreoffice
+        - util-linux
+      "9":
+        - libreoffice
+        - util-linux-core
+
+# Site-specific package additions, e.g. libreoffice.
+archivematica_fpr_extra_mcpclient_packages: []
+
+# Dashboard execution defaults. These reflect the documented management-command
+# pattern and can be reused by future dashboard ORM tasks.
+archivematica_fpr_dashboard_environment_file_map:
+  Debian: /etc/default/archivematica-dashboard
+  RedHat: /etc/sysconfig/archivematica-dashboard
+
+archivematica_fpr_dashboard_environment_file: "{{ archivematica_fpr_dashboard_environment_file_map[ansible_facts['os_family']] }}"
+archivematica_fpr_dashboard_python_path: /usr/share/archivematica/virtualenvs/archivematica/bin/python
+archivematica_fpr_dashboard_manage_module: archivematica.dashboard.manage
+archivematica_fpr_dashboard_tmp_dir: /tmp
+
+# Host-local lock files used by command implementations.
+archivematica_fpr_libreoffice_pdf_lock_file: "/var/lib/archivematica/documentConversion.lock"
+
+# LibreOffice PDF access-normalization customization.
+archivematica_fpr_libreoffice_pdf_tool_description: "LibreOffice"
+archivematica_fpr_libreoffice_pdf_tool_version: ""
+archivematica_fpr_libreoffice_pdf_event_detail_description: "LibreOffice event detail"
+archivematica_fpr_libreoffice_pdf_event_detail_script_type: "bashScript"
+archivematica_fpr_libreoffice_pdf_event_detail_command: |-
+  echo program=\"libreoffice\"\; version=\"$(libreoffice --version 2>/dev/null | head -n 1)\"
+archivematica_fpr_libreoffice_pdf_command_description: "Transcoding to pdf with LibreOffice"
+archivematica_fpr_libreoffice_pdf_command_script_type: "bashScript"
+archivematica_fpr_libreoffice_pdf_command: |-
+  outputExtension="pdf"
+  outputFile="%outputDirectory%%prefix%%fileName%%postfix%.${outputExtension}"
+
+  flock -x {{ archivematica_fpr_libreoffice_pdf_lock_file | quote }} -c 'libreoffice --headless --nodefault --nologo --convert-to pdf --outdir "%outputDirectory%" "%fileFullName%"'
+
+  mv "%outputDirectory%%fileName%.${outputExtension}" "$outputFile"
+archivematica_fpr_libreoffice_pdf_output_location: "%outputDirectory%%prefix%%fileName%%postfix%.pdf"
+archivematica_fpr_libreoffice_pdf_output_format_pronom_id: "fmt/20"
+archivematica_fpr_libreoffice_pdf_rule_purpose: "access"
+archivematica_fpr_libreoffice_pdf_verification_command_uuid: ""
+archivematica_fpr_libreoffice_pdf_verification_command_description: "Standard verification command (non zero filesize)"
+archivematica_fpr_libreoffice_pdf_source_format_pronom_ids: []
+
+# Generic placeholders for future dashboard-managed state.
+archivematica_fpr_tools: []
+archivematica_fpr_commands: []
+archivematica_fpr_rules: []

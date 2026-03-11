@@ -1,0 +1,4 @@
+.molecule/
+.venv/
+__pycache__/
+
