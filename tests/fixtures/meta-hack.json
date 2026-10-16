@@ -1,0 +1,24 @@
+{
+  "contract_version": 1,
+  "run_id": "20261016T164405Z",
+  "inventory_hostname": "am-dev-stack",
+  "fqdn": "am-dev-stack.example.org",
+  "os": {
+    "family": "Debian",
+    "distribution": "Ubuntu",
+    "version": "26.04",
+    "kernel": "7.0.0-38-generic",
+    "architecture": "x86_64"
+  },
+  "role_version": "unknown",
+  "dashboard_environment_file": "/etc/default/archivematica-dashboard",
+  "mcpclient_environment_file": "/etc/default/archivematica-mcp-client",
+  "mysql_client": "/usr/bin/mysql",
+  "probe_user": "archivematica",
+  "executables": ["7z", "convert", "exiftool", "ffmpeg", "ffprobe", "fido", "fiwalk", "gs", "inkscape", "jhove", "mediaconch", "mediainfo", "ps2pdf", "python3", "readpst", "sf", "tesseract", "tsk_recover", "unrar", "unrar-nonfree"],
+  "files": {
+    "fpr-raw.json": 2033650,
+    "probe.json": 12345
+  },
+  "ansible_version": "2.20.0"
+}

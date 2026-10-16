@@ -1,5 +1,5 @@
 ---
-- name: Converge
+- name: Converge the LibreOffice PDF customization
   hosts: all
   gather_facts: true
   vars:
@@ -16,3 +16,18 @@
       ansible.builtin.include_role:
         name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"
 
+- name: Converge the registry inventory
+  hosts: all
+  gather_facts: true
+  vars:
+    archivematica_fpr_manage_mcpclient_packages: false
+    archivematica_fpr_dashboard_environment_file: /tmp/archivematica-dashboard-inventory.env
+    archivematica_fpr_dashboard_tmp_dir: /tmp
+    archivematica_fpr_inventory_enabled: true
+    archivematica_fpr_mcpclient_environment_file: /tmp/archivematica-mcp-client.env
+    archivematica_fpr_inventory_fetch_dir: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/fpr-inventory"
+    archivematica_fpr_inventory_probe_timeout: 5
+  tasks:
+    - name: Include the role under test
+      ansible.builtin.include_role:
+        name: "{{ lookup('ansible.builtin.env', 'MOLECULE_PROJECT_DIRECTORY') }}"

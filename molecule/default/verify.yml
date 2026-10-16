@@ -2,6 +2,8 @@
 - name: Verify
   hosts: all
   gather_facts: false
+  vars:
+    archivematica_fpr_fetch_dir: "{{ lookup('ansible.builtin.env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/fpr-inventory"
   tasks:
     - name: Check fake dashboard runner was invoked
       ansible.builtin.stat:
@@ -23,15 +25,193 @@
         that:
           - "'libreoffice_pdf.py' in (archivematica_fpr_script_path.content | b64decode)"
 
-    - name: Check for leaked temporary dashboard script directories
+    - name: Check for leaked temporary directories
       ansible.builtin.find:
         paths: /tmp
         patterns: "archivematica-fpr-*"
         file_type: directory
       register: archivematica_fpr_tempdirs
 
-    - name: Assert temporary dashboard script directories were removed
+    - name: Assert temporary directories were removed
       ansible.builtin.assert:
         that:
           - archivematica_fpr_tempdirs.matched == 0
 
+    # --- the registry inventory as the role ran it ---------------------------
+
+    - name: Find the inventory runs on the host
+      ansible.builtin.find:
+        paths: /var/lib/archivematica/fpr-inventory
+        file_type: directory
+        recurse: false
+      register: archivematica_fpr_runs
+
+    - name: Assert the inventory ran at least once
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_runs.matched >= 1
+
+    - name: Name the latest run
+      ansible.builtin.set_fact:
+        archivematica_fpr_run_dir: >-
+          {{ archivematica_fpr_runs.files | map(attribute='path') | sort | last }}
+
+    - name: Read the collected files
+      ansible.builtin.slurp:
+        path: "{{ archivematica_fpr_run_dir }}/{{ item }}"
+      loop:
+        - fpr-raw.json
+        - probe.json
+        - meta.json
+      register: archivematica_fpr_collected
+
+    - name: Parse the collected files
+      ansible.builtin.set_fact:
+        archivematica_fpr_dump: "{{ archivematica_fpr_collected.results[0].content | b64decode | from_json }}"
+        archivematica_fpr_probe: "{{ archivematica_fpr_collected.results[1].content | b64decode | from_json }}"
+        archivematica_fpr_meta: "{{ archivematica_fpr_collected.results[2].content | b64decode | from_json }}"
+
+    - name: Assert the dump holds the nine registry tables
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_dump.fpcommand | length == 56
+          - archivematica_fpr_dump.fptool | length == 30
+          - archivematica_fpr_dump.fprule | length == 873
+          - archivematica_fpr_dump.formatversion | length == 2621
+          - archivematica_fpr_dump.format | length == 1688
+          - archivematica_fpr_dump.formatgroup | length == 31
+          - archivematica_fpr_dump.idcommand | length == 25
+          - archivematica_fpr_dump.idtool | length == 5
+          - archivematica_fpr_dump.idrule | length == 1336
+          - archivematica_fpr_dump.migrations | length == 55
+
+    - name: Assert the probe resolved through the service PATH as the probe user
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_probe.path == "/tmp/fpr-fake-bin:/usr/local/bin:/usr/bin:/bin"
+          - archivematica_fpr_probe.user == "archivematica"
+          - archivematica_fpr_probe.executables.exiftool.path == "/tmp/fpr-fake-bin/exiftool"
+          - archivematica_fpr_probe.executables.exiftool.version == "13.50"
+          - archivematica_fpr_probe.executables.jhove.path is none
+          - archivematica_fpr_probe.executables.jhove.version is none
+          - archivematica_fpr_probe.executables.python3.path == "/usr/bin/python3"
+          - archivematica_fpr_probe.interpreter.path == "/usr/bin/python3"
+          - archivematica_fpr_probe.executables | length == 21
+
+    - name: Assert the metadata describes the run
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_meta.run_id == (archivematica_fpr_run_dir | basename)
+          - archivematica_fpr_meta.inventory_hostname == inventory_hostname
+          - archivematica_fpr_meta.mysql_client is match("/(usr/)?bin/mysql$")
+          - archivematica_fpr_meta.dump_row_counts.fpcommand == 56
+          - archivematica_fpr_meta.files["fpr-raw.json"] > 1000000
+          - archivematica_fpr_meta.contract_version == 1
+
+    - name: Read what the fake mysql client was given
+      ansible.builtin.slurp:
+        path: "{{ item }}"
+      loop:
+        - /tmp/archivematica-fpr-mysql-args
+        - /tmp/archivematica-fpr-mysql-defaults
+      register: archivematica_fpr_mysql_calls
+
+    - name: Assert the client ran in batch raw mode on the dashboard database
+      ansible.builtin.assert:
+        that:
+          - "'--batch' in archivematica_fpr_mysql_args"
+          - "'--raw' in archivematica_fpr_mysql_args"
+          - "'--skip-column-names' in archivematica_fpr_mysql_args"
+          - "'--default-character-set=utf8mb4' in archivematica_fpr_mysql_args"
+          - "'MCP' in archivematica_fpr_mysql_args"
+          - archivematica_fpr_mysql_args[0] is match('--defaults-file=/tmp/archivematica-fpr-inventory-')
+      vars:
+        archivematica_fpr_mysql_args: "{{ (archivematica_fpr_mysql_calls.results[0].content | b64decode).splitlines() }}"
+
+    - name: Assert the generated defaults file carried the dashboard credentials
+      ansible.builtin.assert:
+        that:
+          - (archivematica_fpr_mysql_calls.results[1].content | b64decode) == archivematica_fpr_expected_defaults
+      vars:
+        archivematica_fpr_expected_defaults: |
+          [client]
+          host="127.0.0.1"
+          port="3306"
+          user="archivematica"
+          password="s3cr#t \"quoted\" \\back"
+
+    - name: Check the run directory and its files are root-only
+      ansible.builtin.stat:
+        path: "{{ archivematica_fpr_run_dir }}{{ item }}"
+      loop:
+        - ""
+        - /fpr-raw.json
+        - /probe.json
+        - /meta.json
+      register: archivematica_fpr_run_stats
+
+    - name: Assert the run directory and its files are root-only
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_run_stats.results | map(attribute='stat.mode') | list == ["0750", "0600", "0600", "0600"]
+          - archivematica_fpr_run_stats.results | map(attribute='stat.pw_name') | unique | list == ["root"]
+
+    - name: Find the fetched copies on the controller
+      ansible.builtin.find:
+        paths: "{{ archivematica_fpr_fetch_dir }}/{{ inventory_hostname }}"
+        patterns:
+          - fpr-raw.json
+          - probe.json
+          - meta.json
+          - fpr-inventory.json
+          - fpr-inventory.md
+        recurse: true
+      delegate_to: localhost
+      register: archivematica_fpr_fetched
+
+    - name: Look for uv on the controller
+      ansible.builtin.shell: command -v uv
+      delegate_to: localhost
+      register: archivematica_fpr_uv
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the files were fetched and, with uv present, rendered
+      ansible.builtin.assert:
+        that:
+          - "'fpr-raw.json' in archivematica_fpr_fetched_names"
+          - "'probe.json' in archivematica_fpr_fetched_names"
+          - "'meta.json' in archivematica_fpr_fetched_names"
+          - archivematica_fpr_uv.rc != 0 or 'fpr-inventory.md' in archivematica_fpr_fetched_names
+          - archivematica_fpr_uv.rc != 0 or 'fpr-inventory.json' in archivematica_fpr_fetched_names
+      vars:
+        archivematica_fpr_fetched_names: >-
+          {{
+            archivematica_fpr_fetched.files
+            | map(attribute='path')
+            | select('search', '/' ~ (archivematica_fpr_run_dir | basename) ~ '/')
+            | map('basename') | list
+          }}
+
+    # --- the probe script on its own -----------------------------------------
+
+    - name: Run the probe script by itself
+      ansible.builtin.script:
+        cmd: >-
+          {{ playbook_dir }}/../../files/fpr-probe.sh
+          --env-file /tmp/archivematica-mcp-client.env --timeout 5
+          exiftool jhove python3
+      register: archivematica_fpr_probe_run
+      changed_when: false
+
+    - name: Assert the probe script reports what the PATH has and lacks
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_probe_alone.executables.exiftool.version == "13.50"
+          - archivematica_fpr_probe_alone.executables.jhove.path is none
+          - archivematica_fpr_probe_alone.executables.python3.path == "/usr/bin/python3"
+          - archivematica_fpr_probe_alone.interpreter.version is match("Python 3")
+          - archivematica_fpr_probe_alone.checks == []
+          - archivematica_fpr_probe_alone.ffmpeg is none
+      vars:
+        archivematica_fpr_probe_alone: "{{ archivematica_fpr_probe_run.stdout | from_json }}"

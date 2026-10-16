@@ -14,3 +14,36 @@ molecule = [
   "molecule>=24.12.0",
   "molecule-plugins[docker]>=23.7.0",
 ]
+test = [
+  "mypy>=1.14",
+  "pytest>=8.3",
+  "ruff>=0.9",
+  "types-pymysql>=1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = [
+  "files/fpr-env.py",
+  "files/fpr_inventory.py",
+  "tests/test_fpr_env.py",
+  "tests/test_fpr_inventory.py",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# Runs on the hosts' own interpreters, Python 3.6 and later.
+"files/fpr-env.py" = ["UP"]
+
+[tool.ruff.lint.isort]
+force-single-line = true

@@ -1,0 +1,510 @@
+---
+# Read-only inventory of the Format Policy Registry and of the executables the
+# MCPClient host offers to its commands. Every task reports no change. The only
+# writes on the host are the dated run directory and a temporary directory that
+# is removed at the end. The environment files are read with files/fpr-env.py,
+# never executed, and the database password travels only from the dashboard
+# environment file into a 0600 client defaults file in that temporary directory.
+
+- name: Assert the facts the inventory needs were gathered
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] is defined
+    fail_msg: >-
+      archivematica_fpr inventory needs gathered facts (gather_facts: true)
+      for the OS-family environment file maps and the run's metadata.
+
+- name: Check the inventory's prerequisites on the host
+  become: true
+  block:
+    - name: Check the dashboard environment file
+      ansible.builtin.stat:
+        path: "{{ archivematica_fpr_dashboard_environment_file }}"
+      register: archivematica_fpr_inventory_dashboard_env_stat
+
+    - name: Check the MCPClient environment file
+      ansible.builtin.stat:
+        path: "{{ archivematica_fpr_mcpclient_environment_file }}"
+      register: archivematica_fpr_inventory_mcpclient_env_stat
+
+    - name: Look for the mysql client, runuser and the probe user
+      ansible.builtin.shell: |
+        printf 'mysql_client=%s\n' "$(command -v {{ archivematica_fpr_inventory_mysql_client | quote }} || true)"
+        printf 'runuser=%s\n' "$(command -v runuser || true)"
+        printf 'probe_user=%s\n' "$(getent passwd {{ archivematica_fpr_inventory_probe_user | quote }} | cut -d: -f1 || true)"
+      args:
+        executable: /bin/bash
+      register: archivematica_fpr_inventory_prerequisites
+      changed_when: false
+
+    - name: Resolve what the host offers
+      ansible.builtin.set_fact:
+        archivematica_fpr_inventory_found:
+          mysql_client: "{{ archivematica_fpr_inventory_prerequisites.stdout | regex_search('^mysql_client=(.*)$', '\\1', multiline=True) | first }}"
+          runuser: "{{ archivematica_fpr_inventory_prerequisites.stdout | regex_search('^runuser=(.*)$', '\\1', multiline=True) | first }}"
+          probe_user: "{{ archivematica_fpr_inventory_prerequisites.stdout | regex_search('^probe_user=(.*)$', '\\1', multiline=True) | first }}"
+
+    - name: Assert the dashboard environment file exists
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_inventory_dashboard_env_stat.stat.exists
+        fail_msg: >-
+          archivematica_fpr inventory: the dashboard environment file
+          {{ archivematica_fpr_dashboard_environment_file }} is missing. The
+          archivematica-src role writes it; on a host installed otherwise, set
+          archivematica_fpr_dashboard_environment_file to a file that defines
+          the ARCHIVEMATICA_DASHBOARD_CLIENT_* variables.
+
+    - name: Assert the MCPClient environment file exists
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_inventory_mcpclient_env_stat.stat.exists
+        fail_msg: >-
+          archivematica_fpr inventory: the MCPClient environment file
+          {{ archivematica_fpr_mcpclient_environment_file }} is missing. The
+          archivematica-src role writes it; on a host installed otherwise, set
+          archivematica_fpr_mcpclient_environment_file to a file that sets the
+          service PATH.
+
+    - name: Assert the mysql client is installed
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_inventory_found.mysql_client | length > 0
+        fail_msg: >-
+          archivematica_fpr inventory: the mysql client
+          '{{ archivematica_fpr_inventory_mysql_client }}' is not on the PATH.
+          The percona role installs the Percona client package beside the
+          server; install the distribution's or Percona's client package, or set
+          archivematica_fpr_inventory_mysql_client to its path.
+
+    - name: Assert runuser is available
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_inventory_found.runuser | length > 0
+        fail_msg: >-
+          archivematica_fpr inventory: runuser (util-linux) is not on the PATH;
+          the probe needs it to run as
+          {{ archivematica_fpr_inventory_probe_user }}.
+
+    - name: Assert the probe user exists
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_inventory_found.probe_user | length > 0
+        fail_msg: >-
+          archivematica_fpr inventory: the user
+          '{{ archivematica_fpr_inventory_probe_user }}' does not exist on this
+          host; set archivematica_fpr_inventory_probe_user to the user the
+          MCPClient service runs as.
+
+    - name: Check the dashboard environment file sets the client variables
+      ansible.builtin.script:
+        cmd: >-
+          {{ role_path }}/files/fpr-env.py check
+          {{ archivematica_fpr_dashboard_environment_file | quote }}
+          {{ archivematica_fpr_inventory_required_variables | join(' ') }}
+        executable: "{{ ansible_facts['python']['executable'] | default('python3') }}"
+      vars:
+        archivematica_fpr_inventory_required_variables: >-
+          {{
+            ['ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE']
+            + (
+              []
+              if archivematica_fpr_inventory_mysql_defaults_extra_file | length > 0
+              else [
+                'ARCHIVEMATICA_DASHBOARD_CLIENT_HOST',
+                'ARCHIVEMATICA_DASHBOARD_CLIENT_USER',
+                'ARCHIVEMATICA_DASHBOARD_CLIENT_PASSWORD',
+              ]
+            )
+          }}
+      register: archivematica_fpr_inventory_unset_variables
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the dashboard environment file sets the client variables
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_inventory_unset_variables.stdout_lines | length == 0
+        fail_msg: >-
+          archivematica_fpr inventory:
+          {{ archivematica_fpr_dashboard_environment_file }} does not set
+          {{ archivematica_fpr_inventory_unset_variables.stdout_lines | join(', ') }}.
+          The archivematica-src role writes them
+          (envs-patch-backward-compatibility); add them to the file, or point
+          archivematica_fpr_inventory_mysql_defaults_extra_file at a protected
+          client defaults file.
+
+# The git description names the role's version only when the role directory is
+# a checkout of its own; an installed or vendored copy has no description.
+- name: Describe the role checkout on the controller
+  ansible.builtin.shell: |
+    test -e {{ role_path | quote }}/.git \
+      && git -C {{ role_path | quote }} describe --tags --always --dirty
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: archivematica_fpr_inventory_role_describe
+  changed_when: false
+  failed_when: false
+
+- name: Read the host's clock
+  ansible.builtin.command:
+    argv:
+      - date
+      - -u
+      - "+%Y%m%dT%H%M%SZ"
+  register: archivematica_fpr_inventory_clock
+  changed_when: false
+
+- name: Name the inventory run
+  ansible.builtin.set_fact:
+    archivematica_fpr_inventory_run_id: "{{ archivematica_fpr_inventory_clock.stdout | trim }}"
+    archivematica_fpr_inventory_role_version: >-
+      {{
+        archivematica_fpr_inventory_role_describe.stdout | default('') | trim
+        if archivematica_fpr_inventory_role_describe.rc | default(1) == 0
+        else 'unknown'
+      }}
+    archivematica_fpr_inventory_probe_names: >-
+      {{
+        archivematica_fpr_inventory_executables
+        + archivematica_fpr_inventory_extra_executables
+      }}
+
+- name: Name the run directory
+  ansible.builtin.set_fact:
+    archivematica_fpr_inventory_run_dir: >-
+      {{ archivematica_fpr_inventory_base_dir }}/{{ archivematica_fpr_inventory_run_id }}
+
+- name: Create the run directory
+  become: true
+  ansible.builtin.file:
+    path: "{{ archivematica_fpr_inventory_run_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  changed_when: false
+
+- name: Dump the registry and probe the host
+  become: true
+  vars:
+    # Run with the host's interpreter on a collected file and the keys it must
+    # have: prints the missing keys and the sizes of every list and object
+    # value, and exits non-zero when a key is missing or the file is not JSON.
+    archivematica_fpr_inventory_json_check: |
+      import json
+      import sys
+      with open(sys.argv[1]) as handle:
+          document = json.load(handle)
+      missing = [k for k in sys.argv[2:] if k not in document]
+      counts = {
+          k: len(v) for k, v in document.items() if isinstance(v, (list, dict))
+      }
+      print(json.dumps({"missing": missing, "counts": counts}))
+      sys.exit(1 if missing else 0)
+  block:
+    - name: Create a temporary directory for the client files
+      ansible.builtin.tempfile:
+        state: directory
+        path: "{{ archivematica_fpr_inventory_tmp_dir }}"
+        prefix: archivematica-fpr-inventory-
+      register: archivematica_fpr_inventory_tempdir
+      changed_when: false
+
+    - name: Copy the dump statement and the probe script
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ archivematica_fpr_inventory_tempdir.path }}/{{ item }}"
+        mode: "0600"
+      loop:
+        - dump_fpr.sql
+        - fpr-probe.sh
+      changed_when: false
+
+    - name: Read the database name from the dashboard environment file
+      ansible.builtin.script:
+        cmd: >-
+          {{ role_path }}/files/fpr-env.py get
+          {{ archivematica_fpr_dashboard_environment_file | quote }}
+          ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE
+        executable: "{{ ansible_facts['python']['executable'] | default('python3') }}"
+      register: archivematica_fpr_inventory_database_name
+      changed_when: false
+
+    - name: Write the client defaults file from the dashboard environment file
+      ansible.builtin.script:
+        cmd: >-
+          {{ role_path }}/files/fpr-env.py write-defaults
+          {{ archivematica_fpr_dashboard_environment_file | quote }}
+          {{ archivematica_fpr_inventory_tempdir.path | quote }}/my.cnf
+        executable: "{{ ansible_facts['python']['executable'] | default('python3') }}"
+      changed_when: false
+      when: archivematica_fpr_inventory_mysql_defaults_extra_file | length == 0
+
+    - name: Dump the registry with the mysql client
+      ansible.builtin.shell: |
+        set -euo pipefail
+        umask 077
+        {{ archivematica_fpr_inventory_mysql_client | quote }} \
+          --defaults-file={{ archivematica_fpr_inventory_defaults_file | quote }} \
+          {{ archivematica_fpr_inventory_mysql_client_args | map('quote') | join(' ') }} \
+          --default-character-set=utf8mb4 --batch --raw --skip-column-names \
+          {{ archivematica_fpr_inventory_database_name.stdout | trim | quote }} \
+          < {{ archivematica_fpr_inventory_tempdir.path | quote }}/dump_fpr.sql \
+          > {{ archivematica_fpr_inventory_run_dir | quote }}/fpr-raw.json
+      args:
+        executable: /bin/bash
+      vars:
+        archivematica_fpr_inventory_defaults_file: >-
+          {{
+            archivematica_fpr_inventory_mysql_defaults_extra_file
+            if archivematica_fpr_inventory_mysql_defaults_extra_file | length > 0
+            else archivematica_fpr_inventory_tempdir.path ~ '/my.cnf'
+          }}
+      register: archivematica_fpr_inventory_dump_result
+      no_log: "{{ archivematica_fpr_inventory_no_log | bool }}"
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the mysql client dumped the registry
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_inventory_dump_result.rc == 0
+        fail_msg: >-
+          archivematica_fpr inventory: the mysql client failed (rc
+          {{ archivematica_fpr_inventory_dump_result.rc }}):
+          {{ archivematica_fpr_inventory_dump_result.stderr_lines | default([]) | first | default('no error output') }}.
+          The dump needs the dashboard database credentials of
+          {{ archivematica_fpr_dashboard_environment_file }} and a server with
+          the JSON functions of MySQL 5.7.22+, 8.x or MariaDB 10.5+; pass a
+          socket or protocol through archivematica_fpr_inventory_mysql_client_args
+          when the client cannot reach the server, or rerun with
+          archivematica_fpr_inventory_no_log=false on a non-production host.
+
+    - name: Check the dump is a registry document
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_facts['python']['executable'] | default('python3') }}"
+          - -c
+          - "{{ archivematica_fpr_inventory_json_check }}"
+          - "{{ archivematica_fpr_inventory_run_dir }}/fpr-raw.json"
+          - fpcommand
+          - fptool
+          - fprule
+          - formatversion
+          - format
+          - formatgroup
+          - idcommand
+          - idtool
+          - idrule
+      register: archivematica_fpr_inventory_dump_check
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the dump is a registry document
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_inventory_dump_check.rc == 0
+        fail_msg: >-
+          archivematica_fpr inventory: the mysql client did not produce the
+          registry document at
+          {{ archivematica_fpr_inventory_run_dir }}/fpr-raw.json
+          ({{ archivematica_fpr_inventory_dump_check.stdout | default('') }}
+          {{ archivematica_fpr_inventory_dump_check.stderr | default('') | regex_replace('(?s).*\n', '') }}).
+          The statement needs the JSON functions of MySQL 5.7.22+, 8.x or
+          MariaDB 10.5+; rerun with archivematica_fpr_inventory_no_log=false on
+          a non-production host to see the client's output.
+
+    - name: Read the service PATH from the MCPClient environment file
+      ansible.builtin.script:
+        cmd: >-
+          {{ role_path }}/files/fpr-env.py get
+          {{ archivematica_fpr_mcpclient_environment_file | quote }} PATH
+        executable: "{{ ansible_facts['python']['executable'] | default('python3') }}"
+      register: archivematica_fpr_inventory_service_path
+      changed_when: false
+      failed_when: false
+
+    - name: Probe the executables through the MCPClient service PATH
+      ansible.builtin.shell: |
+        set -euo pipefail
+        umask 077
+        runuser=$(command -v runuser)
+        "$runuser" -u {{ archivematica_fpr_inventory_probe_user | quote }} -- /bin/bash -s -- \
+          --path {{ archivematica_fpr_inventory_probe_path | quote }} \
+          --timeout {{ archivematica_fpr_inventory_probe_timeout | int }} \
+          {{ archivematica_fpr_inventory_probe_names | map('quote') | join(' ') }} \
+          < {{ archivematica_fpr_inventory_tempdir.path | quote }}/fpr-probe.sh \
+          > {{ archivematica_fpr_inventory_run_dir | quote }}/probe.json
+      args:
+        executable: /bin/bash
+      vars:
+        # systemd's default service PATH stands in when the file sets none.
+        archivematica_fpr_inventory_probe_path: >-
+          {{
+            archivematica_fpr_inventory_service_path.stdout | trim
+            if archivematica_fpr_inventory_service_path.rc == 0
+            else '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+          }}
+      changed_when: false
+
+    - name: Check the probe is a probe document
+      ansible.builtin.command:
+        argv:
+          - "{{ ansible_facts['python']['executable'] | default('python3') }}"
+          - -c
+          - "{{ archivematica_fpr_inventory_json_check }}"
+          - "{{ archivematica_fpr_inventory_run_dir }}/probe.json"
+          - executables
+          - path
+      register: archivematica_fpr_inventory_probe_check
+      changed_when: false
+      failed_when: false
+
+    - name: Assert the probe is a probe document
+      ansible.builtin.assert:
+        that:
+          - archivematica_fpr_inventory_probe_check.rc == 0
+        fail_msg: >-
+          archivematica_fpr inventory: the probe did not produce a JSON document
+          at {{ archivematica_fpr_inventory_run_dir }}/probe.json
+          ({{ archivematica_fpr_inventory_probe_check.stdout | default('') }}
+          {{ archivematica_fpr_inventory_probe_check.stderr | default('') | regex_replace('(?s).*\n', '') }}).
+
+    - name: Measure the collected files
+      ansible.builtin.stat:
+        path: "{{ archivematica_fpr_inventory_run_dir }}/{{ item }}"
+      loop:
+        - fpr-raw.json
+        - probe.json
+      register: archivematica_fpr_inventory_file_stats
+
+    - name: Record the run's metadata
+      ansible.builtin.copy:
+        content: "{{ archivematica_fpr_inventory_meta | to_nice_json }}\n"
+        dest: "{{ archivematica_fpr_inventory_run_dir }}/meta.json"
+        owner: root
+        group: root
+        mode: "0600"
+      vars:
+        archivematica_fpr_inventory_meta:
+          contract_version: 1
+          run_id: "{{ archivematica_fpr_inventory_run_id }}"
+          inventory_hostname: "{{ inventory_hostname }}"
+          fqdn: "{{ ansible_facts['fqdn'] | default('') }}"
+          os:
+            family: "{{ ansible_facts['os_family'] }}"
+            distribution: "{{ ansible_facts['distribution'] | default('') }}"
+            version: "{{ ansible_facts['distribution_version'] | default('') }}"
+            kernel: "{{ ansible_facts['kernel'] | default('') }}"
+            architecture: "{{ ansible_facts['architecture'] | default('') }}"
+          role_version: "{{ archivematica_fpr_inventory_role_version }}"
+          dashboard_environment_file: "{{ archivematica_fpr_dashboard_environment_file }}"
+          mcpclient_environment_file: "{{ archivematica_fpr_mcpclient_environment_file }}"
+          mysql_client: "{{ archivematica_fpr_inventory_found.mysql_client }}"
+          mysql_defaults_extra_file: "{{ archivematica_fpr_inventory_mysql_defaults_extra_file }}"
+          probe_user: "{{ archivematica_fpr_inventory_probe_user }}"
+          executables: "{{ archivematica_fpr_inventory_probe_names }}"
+          files: >-
+            {{
+              dict(
+                archivematica_fpr_inventory_file_stats.results
+                | map(attribute='item')
+                | zip(
+                    archivematica_fpr_inventory_file_stats.results
+                    | map(attribute='stat.size')
+                  )
+              )
+            }}
+          dump_row_counts: "{{ (archivematica_fpr_inventory_dump_check.stdout | from_json).counts }}"
+          ansible_version: "{{ ansible_version.full }}"
+      changed_when: false
+  always:
+    - name: Remove the temporary directory
+      ansible.builtin.file:
+        path: "{{ archivematica_fpr_inventory_tempdir.path }}"
+        state: absent
+      changed_when: false
+      when:
+        - archivematica_fpr_inventory_tempdir is defined
+        - archivematica_fpr_inventory_tempdir.path is defined
+
+- name: Fetch the inventory files to the controller
+  become: true
+  ansible.builtin.fetch:
+    src: "{{ archivematica_fpr_inventory_run_dir }}/{{ item }}"
+    dest: "{{ archivematica_fpr_inventory_fetch_dir }}/{{ inventory_hostname }}/{{ archivematica_fpr_inventory_run_id }}/"
+    flat: true
+  loop:
+    - fpr-raw.json
+    - probe.json
+    - meta.json
+  when: archivematica_fpr_inventory_fetch | bool
+  changed_when: false
+
+- name: Render the inventory on the controller
+  delegate_to: localhost
+  become: false
+  when:
+    - archivematica_fpr_inventory_fetch | bool
+    - archivematica_fpr_inventory_render | bool
+  vars:
+    archivematica_fpr_inventory_fetched_dir: >-
+      {{ archivematica_fpr_inventory_fetch_dir }}/{{ inventory_hostname }}/{{ archivematica_fpr_inventory_run_id }}
+    archivematica_fpr_inventory_reporter_argv: >-
+      {{
+        [
+          'uv', 'run', '--script', role_path ~ '/files/fpr_inventory.py', 'build',
+          '--raw', archivematica_fpr_inventory_fetched_dir ~ '/fpr-raw.json',
+          '--probe', archivematica_fpr_inventory_fetched_dir ~ '/probe.json',
+          '--meta', archivematica_fpr_inventory_fetched_dir ~ '/meta.json',
+          '--out', archivematica_fpr_inventory_fetched_dir,
+        ]
+        + (['--all'] if archivematica_fpr_inventory_render_all | bool else [])
+      }}
+  block:
+    - name: Look for uv on the controller
+      ansible.builtin.shell: command -v uv
+      register: archivematica_fpr_inventory_uv
+      changed_when: false
+      failed_when: false
+
+    - name: Run the reporter
+      ansible.builtin.command:
+        argv: "{{ archivematica_fpr_inventory_reporter_argv }}"
+      register: archivematica_fpr_inventory_render_result
+      changed_when: false
+      failed_when: false
+      when: archivematica_fpr_inventory_uv.rc == 0
+
+    - name: Report the rendered inventory
+      ansible.builtin.debug:
+        msg: >-
+          Inventory of {{ inventory_hostname }} rendered under
+          {{ archivematica_fpr_inventory_fetched_dir }}
+          (fpr-inventory.json, fpr-inventory.md).
+      when:
+        - archivematica_fpr_inventory_uv.rc == 0
+        - archivematica_fpr_inventory_render_result.rc == 0
+
+    - name: Report a render failure
+      ansible.builtin.debug:
+        msg: >-
+          The reporter failed for {{ inventory_hostname }}
+          (rc {{ archivematica_fpr_inventory_render_result.rc }}):
+          {{ archivematica_fpr_inventory_render_result.stderr | default('') }}.
+          The collected files are under
+          {{ archivematica_fpr_inventory_fetched_dir }}; render them later with:
+          {{ archivematica_fpr_inventory_reporter_argv | map('quote') | join(' ') }}
+      when:
+        - archivematica_fpr_inventory_uv.rc == 0
+        - archivematica_fpr_inventory_render_result.rc != 0
+
+    - name: Say how to render later
+      ansible.builtin.debug:
+        msg: >-
+          uv is not on the controller's PATH, so the inventory of
+          {{ inventory_hostname }} was fetched but not rendered. Render it later
+          with: {{ archivematica_fpr_inventory_reporter_argv | map('quote') | join(' ') }}
+      when: archivematica_fpr_inventory_uv.rc != 0

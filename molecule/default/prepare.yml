@@ -12,9 +12,13 @@
     - name: Create fake dashboard environment file
       ansible.builtin.copy:
         dest: /tmp/archivematica-dashboard.env
-        mode: "0644"
+        mode: "0600"
         content: |
           DJANGO_SETTINGS_MODULE=archivematica.settings.production
+          ARCHIVEMATICA_DASHBOARD_CLIENT_HOST=127.0.0.1
+          ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE=MCP
+          ARCHIVEMATICA_DASHBOARD_CLIENT_USER=archivematica
+          ARCHIVEMATICA_DASHBOARD_CLIENT_PASSWORD='s3cr#t "quoted" \back'
 
     - name: Install fake dashboard runner
       ansible.builtin.copy:
@@ -33,3 +37,77 @@
           printf '%s\n' "$script_path" > /tmp/archivematica-fpr-script-path
           printf '{"changed": false, "actions": []}\n'
 
+    - name: Create fake dashboard environment file for the inventory
+      ansible.builtin.copy:
+        dest: /tmp/archivematica-dashboard-inventory.env
+        mode: "0600"
+        content: |
+          # Values a shell would choke on or execute; the role must only read them.
+          DJANGO_SETTINGS_MODULE=archivematica.settings.production
+          ARCHIVEMATICA_DASHBOARD_DJANGO_SECRET_KEY=abc(def)$HOME&x`id`
+          ARCHIVEMATICA_DASHBOARD_CLIENT_HOST=127.0.0.1
+          ARCHIVEMATICA_DASHBOARD_CLIENT_DATABASE=MCP
+          ARCHIVEMATICA_DASHBOARD_CLIENT_USER=archivematica
+          ARCHIVEMATICA_DASHBOARD_CLIENT_PASSWORD='s3cr#t "quoted" \back'
+
+    - name: Create the probe user
+      ansible.builtin.user:
+        name: archivematica
+        system: true
+        home: /var/lib/archivematica
+        create_home: true
+        shell: /usr/sbin/nologin
+
+    - name: Create fake MCPClient environment file
+      ansible.builtin.copy:
+        dest: /tmp/archivematica-mcp-client.env
+        mode: "0600"
+        content: |
+          DJANGO_SETTINGS_MODULE=archivematica.settings.production
+          PATH=/tmp/fpr-fake-bin:/usr/local/bin:/usr/bin:/bin
+
+    - name: Create fake executable directory on the service PATH
+      ansible.builtin.file:
+        path: /tmp/fpr-fake-bin
+        state: directory
+        mode: "0755"
+
+    - name: Install fake exiftool
+      ansible.builtin.copy:
+        dest: /tmp/fpr-fake-bin/exiftool
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          echo "13.50"
+
+    - name: Ensure the fixture directory exists
+      ansible.builtin.file:
+        path: /usr/local/share/archivematica-fpr
+        state: directory
+        mode: "0755"
+
+    - name: Install the fixture registry dump
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../../tests/fixtures/hack-fpr.json"
+        dest: /usr/local/share/archivematica-fpr/fpr-fixture.json
+        mode: "0644"
+
+    - name: Install fake mysql client
+      ansible.builtin.copy:
+        dest: /usr/bin/mysql
+        mode: "0755"
+        content: |
+          #!/bin/sh
+          # Records its arguments and the client defaults file it was given,
+          # then prints the fixture registry dump whatever the statement. Lives
+          # in /usr/bin like a distribution's client, inside sudo's secure_path.
+          set -eu
+          printf '%s\n' "$@" > /tmp/archivematica-fpr-mysql-args
+          for arg in "$@"; do
+            case "$arg" in
+              --defaults-file=*)
+                cp "${arg#*=}" /tmp/archivematica-fpr-mysql-defaults
+                ;;
+            esac
+          done
+          cat /usr/local/share/archivematica-fpr/fpr-fixture.json

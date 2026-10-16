@@ -9,3 +9,7 @@
 - name: Configure LibreOffice PDF normalization
   ansible.builtin.include_tasks: libreoffice_pdf.yml
   when: archivematica_fpr_libreoffice_pdf_source_format_pronom_ids | length > 0
+
+- name: Run the registry inventory
+  ansible.builtin.include_tasks: inventory.yml
+  when: archivematica_fpr_inventory_enabled | bool

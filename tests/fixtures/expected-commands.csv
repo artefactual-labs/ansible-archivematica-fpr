@@ -1,0 +1,57 @@
+uuid,description,usage,status,script_type,executables,shell_utilities,python_imports,placeholders,rules_enabled,rules_disabled,rule_purposes
+99d5f508-7733-4e86-883f-bd6abc3fbac7,ExifTool,characterization,enabled,bashScript,exiftool,,,fileFullName,124,0,characterization=124
+80314f3c-5d48-4ad1-a9f2-2c0f7c7b229d,FFprobe,characterization,enabled,bashScript,ffprobe,,,fileFullName,113,0,characterization=113
+928ce834-8830-44cc-a282-4ba1271f7842,fiwalk,Characterization,enabled-superseded,command,fiwalk,,,relativeLocation,0,0,
+fcd033ec-8e29-48e8-99b9-6dbccd8f9c6e,fiwalk,Characterization,enabled,command,fiwalk,,,relativeLocation,9,0,characterization=9
+114c9525-d676-4fac-9962-4672faa924bb,MediaInfo,characterization,enabled,bashScript,mediainfo,,,fileFullName,136,0,characterization=136
+0fd7935a-ed0d-4f67-aa25-1b44684f6aca,convert event detail,event_detail,enabled,bashScript,convert,echo grep,,,0,0,
+914fe3e5-fa45-47c6-858d-e11bc71f5b76,Get event detail text for 7z extraction,event_detail,superseded,bashScript,7z,echo grep,,,0,0,
+8f177f1c-5eac-45c4-aa6f-2214107d1a7b,Get event detail text for 7z extraction,event_detail,enabled,bashScript,7z,echo awk,,,0,0,
+77f73d63-7d82-4b61-8dec-6626c3dc224a,Get event detail text for ffmpeg extraction,event_detail,enabled,bashScript,ffmpeg,echo grep,,,0,0,
+c072c3c8-ba0e-480b-b0ee-2f27c6c0653e,Get event detail text for unrar extraction,event_detail,enabled,bashScript,unrar-nonfree,echo grep,,,0,0,
+45a2f264-37d7-4881-b28c-25d628bf2823,Ghostscript event detail,event_detail,enabled,bashScript,gs,echo,,,0,0,
+1db2deea-01dd-43e5-9f27-dc9ed02acdfe,inkscape event detail,event_detail,enabled,bashScript,inkscape,echo,,,0,0,
+ebe5a085-6039-4c8d-9953-beed5b03c778,ps2pdf event detail,event_detail,enabled,bashScript,gs,echo,,,0,0,
+42e7fdc3-42c6-4715-b79a-e900df916cab,readpst event detail,event_detail,enabled,bashScript,readpst,echo,,,0,0,
+b8864e2c-87a0-4aec-a8cf-a747a073be28,Extracting 7Zip compatible format.,Extraction,enabled,command,7z,,,inputFile outputDirectory,7,0,extract=7
+a03a3a6d-5695-4800-a16d-edd7143cc438,Extracting RAR format.,extraction,enabled,pythonScript,unrar,,,outputDirectory,5,0,extract=5
+8f41dc6f-05eb-46d4-9b22-0a0d74673510,tsk_recover,extraction,superseded,pythonScript,tsk_recover,,,,0,0,
+0de46681-43a4-424d-90d4-c6e2d5b7312f,tsk_recover,extraction,enabled,pythonScript,tsk_recover,,,,6,0,extract=6
+41112047-7ddf-4bf0-9156-39fe96b32d53,Copying file to access directory,normalization,enabled,command,,cp,,fileExtensionWithDot fileName inputFile outputDirectory postfix prefix,1,0,default_access=1
+1628571b-c2cd-4822-afdb-53561400c7c4,Transcoding to jpg thumbnail with convert,normalization,enabled,command,convert,,,fileFullName outputDirectory postfix,68,0,thumbnail=68
+6957fdac-a1ed-470f-89f7-fb00be42ea13,Transcoding to jpg with convert,normalization,enabled,command,convert,,,fileFullName fileName outputDirectory postfix prefix,68,0,access=68
+76fd899e-cd5a-4da3-8752-45c43fc18656,Transcoding to mkv with ffmpeg,normalization,superseded,bashScript,ffmpeg,echo eval,,fileFullName fileName outputDirectory postfix prefix,0,25,
+2d991241-e352-4a77-b104-e7e82fb119c4,Transcoding to mkv with ffmpeg,normalization,enabled,bashScript,ffmpeg,echo eval,,fileFullName fileName outputDirectory postfix prefix,0,26,
+520f976f-476d-4ec6-be1c-7c448c5c074d,Transcoding to mp3 with ffmpeg,normalization,enabled,bashScript,ffmpeg,,,fileFullName fileName outputDirectory postfix prefix,29,0,access=29
+bb5a6da2-4b89-4f8c-96e3-ca36c55d3337,Transcoding to mp4 with ffmpeg,normalization,enabled,bashScript,ffmpeg,,,fileFullName fileName outputDirectory postfix prefix,22,0,access=22
+d91f0637-b2f6-4492-ac1b-23c155102a3e,Transcoding to pdf with inkscape,normalization,enabled,command,inkscape,,,fileFullName fileName outputDirectory postfix prefix,22,0,access=22
+a74cbffb-281b-49ee-8e96-fbac2ab54785,Transcoding to pdf with ps2pdf,normalization,disabled,command,ps2pdf,,,fileFullName fileName outputDirectory postfix prefix,0,0,
+e96b787d-57f6-41a4-9693-d0634bfacacb,Transcoding to pdf with ps2pdf,normalization,enabled,command,ps2pdf,,,fileFullName fileName outputDirectory postfix prefix,4,0,access=4
+d6a33093-85d5-4088-83e1-b7a774a826bd,Transcoding to pdfa with Ghostscript,normalization,enabled,command,gs,,,fileFullName fileName outputDirectory postfix prefix,22,0,preservation=22
+64c450b4-135c-46d1-a9aa-3f9b15671677,Transcoding to plain svg with inkscape,normalization,enabled-superseded,bashScript,inkscape,sudo chmod,,fileFullName fileName outputDirectory postfix prefix,0,0,
+cf8b44c8-ba16-44cd-8b47-cb29d52fbac4,Transcoding to plain svg with inkscape,normalization,enabled,bashScript,inkscape,chmod,,fileFullName fileName outputDirectory postfix prefix,8,0,preservation=8
+a34ddc9b-c922-4bb6-8037-bbe713332175,Transcoding to tif with convert,normalization,enabled,command,convert,,,fileFullName fileName outputDirectory postfix prefix,50,18,preservation=50
+66ba8388-2cd2-44a7-9d30-5d194d47c75b,Transcoding to tif with ffmpeg,normalization,enabled,command,ffmpeg,,,fileFullName fileName outputDirectory postfix prefix,1,0,preservation=1
+9dc10fcb-5809-4c0b-917a-02517ef4d1c6,Transcoding to wav with ffmpeg,normalization,enabled,bashScript,ffmpeg,,,fileFullName fileName outputDirectory postfix prefix,8,0,preservation=8
+3bd47271-a3fa-4627-be97-9f7f69ddeefd,Using default thumbnail,normalization,superseded,command,,cp,,outputDirectory postfix,0,1,
+7c2b65c7-6cea-4f81-9f3b-53375efc5bee,Using default thumbnail,normalization,superseded,pythonScript,,,,outputDirectory postfix,0,0,
+95149bc4-0620-4c20-964c-1d6c34b9400e,Using default thumbnail,normalization,superseded,pythonScript,,,,outputDirectory postfix,0,0,
+484d3a8f-9e59-4912-a5b8-f8a2deb3466a,Using default thumbnail,normalization,enabled,pythonScript,,,,outputDirectory postfix,1,0,default_thumbnail=1
+4ea06c2b-ee42-4f80-ad10-4e044ba0676a,Transcribe using Tesseract,transcription,enabled,bashScript,tesseract,test mkdir,,SIPObjectsDirectory fileFullName fileName fileUUID,12,0,transcription=12
+9ef290f7-5320-4d69-821a-3156fc184b4e,Check against policy PLACEHOLDER_FOR_POLICY_FILE_NAME using MediaConch,validation,disabled,pythonScript,mediaconch,,ammcpc,,0,1,
+fe9e3046-29fb-4cc6-b71c-db50b0aac127,Validate using JHOVE,validation,superseded,pythonScript,jhove,,lxml,,0,0,
+11036e14-78d9-4449-8360-e2da394279ad,Validate using JHOVE,validation,superseded,pythonScript,jhove,,lxml,,0,0,
+4cac3267-453e-4456-9306-6d098dacb70d,Validate using JHOVE,validation,superseded,pythonScript,jhove,,lxml,,0,0,
+cb335c49-e6ce-445f-a774-494a6f2300c6,Validate using JHOVE,validation,disabled,pythonScript,jhove,,lxml,,0,0,
+d610e7d6-f78c-4fb8-bd19-09a10fa48672,Validate using JHOVE AIFF-hul,validation,enabled,pythonScript,jhove,,lxml archivematica,,4,0,validation=4
+8816399f-ca5d-4861-9ae9-a4d22cc89e63,Validate using JHOVE gif-hul,validation,enabled,pythonScript,jhove,,lxml archivematica,,3,0,validation=3
+1dd10753-12f4-4a71-bd69-532186b77d93,Validate using JHOVE JPEG-hul,validation,enabled,pythonScript,jhove,,lxml archivematica,,12,0,validation=12
+34858217-507c-4e65-a7d9-ca62e1f72642,Validate using JHOVE JPEG2000-hul,validation,enabled,pythonScript,jhove,,lxml archivematica,,1,0,validation=1
+2d2fd8b9-5215-41f8-bb33-58be6a2b4abb,Validate using JHOVE PDF-hul,validation,enabled,pythonScript,jhove,,lxml archivematica,,30,0,validation=30
+09a14b6b-3f4c-49d8-9a62-0c7212aca83c,Validate using JHOVE TIFF-hul,validation,enabled,pythonScript,jhove,,lxml archivematica,,12,0,validation=12
+228f6676-97d7-44ff-bdb8-bfe181dee1a1,Validate using JHOVE WARC-kb,validation,enabled,pythonScript,jhove,,lxml archivematica,,3,0,validation=3
+33510bbe-8115-48af-8e6c-7cc7e1773d35,Validate using JHOVE WAVE-hul,validation,enabled,pythonScript,jhove,,lxml archivematica,,20,0,validation=20
+287656fb-e58f-4967-bf72-0bae3bbb5ca8,Validate using MediaConch,validation,superseded,pythonScript,mediaconch,,lxml,,0,0,
+fd8edea2-e251-4fa7-9592-f033d965696c,Validate using MediaConch,validation,enabled,pythonScript,mediaconch,,lxml,,1,0,validation=1
+ef3ea000-0c3c-4cae-adc2-aa2a6ccbffce,Standard verification command (file exists only),verification,enabled,bashScript,,test,,outputLocation,0,0,
+a9111dc0-edc9-47f8-85e5-ad4013971361,Standard verification command (non zero filesize),verification,enabled,bashScript,,test,,outputLocation,0,0,

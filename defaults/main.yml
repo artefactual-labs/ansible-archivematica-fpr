@@ -67,3 +67,78 @@ archivematica_fpr_libreoffice_pdf_source_format_pronom_ids: []
 archivematica_fpr_tools: []
 archivematica_fpr_commands: []
 archivematica_fpr_rules: []
+
+# Registry inventory: an opt-in, read-only dump of the Format Policy Registry
+# and probe of the executables the MCPClient host offers to its commands, saved
+# on the host under a dated directory, fetched to the controller and rendered
+# there with files/fpr_inventory.py. The dump reads the registry with the mysql
+# client and the credentials of the dashboard environment file; it does not use
+# the dashboard virtualenv or any Archivematica code.
+archivematica_fpr_inventory_enabled: false
+
+# Host-side base directory; each run writes <base>/<UTC timestamp>/.
+archivematica_fpr_inventory_base_dir: /var/lib/archivematica/fpr-inventory
+
+# Fetch the run's files to the controller, under
+# <fetch dir>/<inventory_hostname>/<timestamp>/.
+archivematica_fpr_inventory_fetch: true
+archivematica_fpr_inventory_fetch_dir: "{{ playbook_dir }}/fpr-inventory"
+
+# Run the reporter on the controller after fetching, when uv is on its PATH.
+# archivematica_fpr_inventory_render_all includes disabled and superseded rows.
+archivematica_fpr_inventory_render: true
+archivematica_fpr_inventory_render_all: false
+
+# The probe runs as this user, started by root with runuser, with the PATH of
+# the MCPClient environment file; each version or option call gets this many
+# seconds.
+archivematica_fpr_inventory_probe_user: archivematica
+archivematica_fpr_inventory_probe_timeout: 20
+
+# Executables the probe resolves: every program the stock commands start, plus
+# magick for information. Site additions (for example libreoffice) go in the
+# extra list.
+archivematica_fpr_inventory_executables:
+  - 7z
+  - convert
+  - exiftool
+  - ffmpeg
+  - ffprobe
+  - fido
+  - fiwalk
+  - gs
+  - inkscape
+  - jhove
+  - magick
+  - mediaconch
+  - mediainfo
+  - ps2pdf
+  - python3
+  - readpst
+  - sf
+  - tesseract
+  - tsk_recover
+  - unrar
+  - unrar-nonfree
+archivematica_fpr_inventory_extra_executables: []
+
+# The mysql client: its name or path, an optional protected defaults file used
+# instead of the one generated from the dashboard environment file, and
+# non-secret extra client arguments (for example --protocol=tcp). The two
+# override variables mirror the archivematica_upgrade role's.
+archivematica_fpr_inventory_mysql_client: mysql
+archivematica_fpr_inventory_mysql_defaults_extra_file: ""
+archivematica_fpr_inventory_mysql_client_args: []
+
+# Keep the dump task's output out of the log; set to false only to debug on a
+# non-production host.
+archivematica_fpr_inventory_no_log: true
+
+# Where the temporary directory holding the client files is created.
+archivematica_fpr_inventory_tmp_dir: "{{ archivematica_fpr_dashboard_tmp_dir }}"
+
+# The MCPClient environment file, whose PATH the probe resolves through.
+archivematica_fpr_mcpclient_environment_file_map:
+  Debian: /etc/default/archivematica-mcp-client
+  RedHat: /etc/sysconfig/archivematica-mcp-client
+archivematica_fpr_mcpclient_environment_file: "{{ archivematica_fpr_mcpclient_environment_file_map[ansible_facts['os_family']] }}"
